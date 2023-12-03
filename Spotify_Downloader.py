@@ -17,6 +17,9 @@ import webbrowser
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import APIC, ID3
 
+
+my_music_folder = "../Tracks/SpotifyDown"
+
 class WritingMetaTags():
     def __init__(self, tags, filename):
         super().__init__()
@@ -234,7 +237,6 @@ class MusicScraper(QThread):
                                         SONG_META['file'] = music_folder + "/" + filename
                                         songTag = WritingMetaTags(tags=SONG_META, filename=music_folder + "/" + filename)
                                         song_meta_add = songTag.WritingMetaTags()
-                                        print("ok!")
                             
                                     #Increment the counter
                                     self.increment_counter()
@@ -285,7 +287,7 @@ class ScraperThread(QThread):
         self.scraper = MusicScraper()  # Create an instance of MusicScraper
 
     def run(self):
-        music_folder = os.path.join(os.getcwd(), "music")  # Change this path to your desired music folder
+        music_folder = os.path.join(os.getcwd(), my_music_folder)  # Change this path to your desired music folder
         self.progress_update.emit("Scraping started...")
         try:
             self.scraper.returnSPOT_ID(self.playlist_link)
