@@ -157,7 +157,7 @@ class Ui_MainWindow(object):
         MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
         self.title.setText(_translate("MainWindow", "Spotify Downloader"))
         self.close.setText(_translate("MainWindow", "X"))
-        self.playlist_link.setPlaceholderText(_translate("MainWindow", "Enter Spotify Playlist Link"))
+        self.playlist_link.setPlaceholderText(_translate("MainWindow", "Enter Spotify Playlist or Track Link"))
         self.song_name.setText(_translate("MainWindow", " "))
         self.counter_label.setText(_translate("MainWindow", ""))
      

@@ -24,7 +24,8 @@ except Exception as e:
     print("run 'pip3 install -r req.txt' to fix")
 
 class Settings:
-    def __init__(self):        
+    def __init__(self):
+        # MODIFY TO SUIT YOUR NEEDS        
         self.music_folder = "../Tracks"
         self.music_folder_use_playlist_name = True
         self.skip_existing=True
@@ -83,7 +84,7 @@ class MusicScraper(QThread):
         self.downloaded_track_count = 0
         self.failed_track_count = 0
         self.skipped_track_count = 0
-        self.failed_tracks = ""
+        self.failed_tracks = []
         self.playlist_tracks = []
         self.directory_tracks = []
         
@@ -293,6 +294,7 @@ class MusicScraper(QThread):
                 response = self.session.get(url=Playlist_Link, params=offset_data, headers=headers)
             else:
                 break
+        self.song_downloading.emit("")
         self.directory_tracks = os.listdir(music_folder)
         self.update_track_counts_ui("Done")
     
@@ -304,12 +306,15 @@ class MusicScraper(QThread):
         filename = self.make_filename(song)
         self.playlist_tracks.append(filename)
         if yt_id is not None:
+            # Create Folder for Playlist
+            if not os.path.exists(music_folder):
+                os.makedirs(music_folder)
+                
             self.song_downloading.emit(song['artists']+ ' - ' + song['album'] + ' - ' + song['title'])
             if settings.skip_existing and os.path.exists(music_folder + "/" + filename):
                 self.skipped_track_count += 1
                 self.update_track_counts_ui("Downloading")
             else:
-                print("Downloading:\t" + filename)
                 try:
                     data = self.generate_Analyze_id(yt_id['id'])
                     try:
@@ -323,10 +328,6 @@ class MusicScraper(QThread):
                     if DL_LINK is not None:
                         ## DOWNLOAD
                         link = self.session.get(DL_LINK)
-
-                        # Create Folder for Playlist
-                        if not os.path.exists(music_folder):
-                            os.makedirs(music_folder)
 
                         ## Save
                         with open(os.path.join(music_folder, filename), 'wb') as f:
@@ -342,19 +343,19 @@ class MusicScraper(QThread):
                     else:
                         print('[*] No Download Link Found for '+filename)
                         self.failed_track_count += 1
-                        self.failed_tracks += "\n"+filename + ": No Download Link Found"
-                        self.update_track_counts_ui("Downloading")
+                        self.failed_tracks.append(filename + ": No Download Link Found")
+                        self.update_track_counts_ui("Error")
                 except Exception as error_status:
-                    print('[*] Error Status Code : ', error_status, filename)
+                    print('[*] Error Status Code : '+ str(error_status) +  filename)
                     self.failed_track_count += 1
-                    self.failed_tracks += "\n"+filename+ ": Error Status Code : " + str(error_status)
-                    self.update_track_counts_ui()
+                    self.failed_tracks.append(filename + ": Error Status Code : " + str(error_status))
+                    self.update_track_counts_ui("Error")
 
         else:
             print('[*] No data found for : ', song)
             self.failed_track_count += 1
-            self.failed_tracks += "\n"+filename + ": No data found"
-            self.update_track_counts_ui("Downloading")
+            self.failed_tracks.append(filename + ": No data found")
+            self.update_track_counts_ui("Error")
         
 
     def update_track_counts_ui(self, message):
@@ -428,29 +429,35 @@ class ScraperThread(QThread):
                 self.details_update.emit("")
                 playlist_id = self.scraper.get_playlist_id(self.link)
                 self.scraper.scrape_playlist(playlist_id, music_folder)
-                if self.scraper.failed_track_count>0:
-                    self.scraper.song_downloading.emit("Failed:"+self.scraper.failed_tracks)
-                    print("Failed:\n"+self.scraper.failed_tracks)
-                else:
-                    self.scraper.song_downloading.emit("")
-                 
+    
                 details = ""   
+                          
+                if len(self.scraper.failed_tracks)>0:
+                    details += "\nfailed track downloads:"
+                    for track in self.scraper.failed_tracks:
+                        details += "\n" + track
+                    details += "\n"
+                
                 in_folder_not_in_playlist = []
                 for track in self.scraper.directory_tracks:
                     if track not in self.scraper.playlist_tracks and track != ".DS_Store":
                         in_folder_not_in_playlist.append(track)
+                if len(in_folder_not_in_playlist):
+                    details += "\nin folder but not in playlist:"
+                    for track in in_folder_not_in_playlist:
+                        details += "\n" + track
+                    details += "\n"
+                        
                 in_playlist_not_in_folder = []
                 for track in self.scraper.playlist_tracks:
                     if track not in self.scraper.directory_tracks:
                          in_playlist_not_in_folder.append(track)
-                if len(in_folder_not_in_playlist):
-                    details += "\nin folder not in playlist:"
-                    for track in in_folder_not_in_playlist:
-                        details += "\n" + track
                 if len(in_playlist_not_in_folder):
-                    details += "\nin playlist not in folder:"
+                    details += "\nin playlist but not in folder:"
                     for track in in_playlist_not_in_folder:
                         details += "\n" + track
+                    details += "\n"
+                        
                 self.details_update.emit(details)
                         
             elif self.scraper.is_track(self.link):
