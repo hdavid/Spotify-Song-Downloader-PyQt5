@@ -1,4 +1,4 @@
-
+#!/usr/bin/python3
 # Main
 # if __name__ == '__main__':from PyQt5.uic import loadUi
 
@@ -13,6 +13,51 @@ import string
 import requests
 import re
 import webbrowser
+
+from mutagen.easyid3 import EasyID3
+from mutagen.id3 import APIC, ID3
+
+class WritingMetaTags():
+    def __init__(self, tags, filename):
+        super().__init__()
+        self.tags = tags
+        self.filename = filename
+        self.PICTUREDATA = None
+        self.url = None
+
+    def setPIC(self):
+        if self.tags['cover'] is None:
+            pass
+        else:
+            try:
+                response = requests.get(self.tags['cover']+"?size=1", stream=True)
+                if response.status_code == 200 :
+                    audio = ID3(self.filename)
+                    audio['APIC'] = APIC(
+                        encoding=3,
+                        mime='image/jpeg',
+                        type=3,
+                        desc=u'Cover',
+                        data=response.content
+                    )
+                    audio.save()
+
+            except Exception as e:
+                print(f"Error adding cover: {e}")
+
+    def WritingMetaTags(self):
+        try:
+            # print('[*] FileName : ', self.filename)
+            audio = EasyID3(self.filename)
+            audio['title'] = self.tags['title']
+            audio['artist'] = self.tags['artists']
+            audio['album'] = self.tags['album']
+            audio['date'] = self.tags['releaseDate']
+            audio.save()
+            self.setPIC()
+
+        except Exception as e:
+            print(f'Error {e}')
 
 
 class MusicScraper(QThread):
@@ -159,7 +204,7 @@ class MusicScraper(QThread):
                 for count, song in enumerate(Tdata):
                     yt_id = self.get_ID(song['id'])
                     if yt_id is not None:
-                        filename = song['title'].translate(str.maketrans('', '', string.punctuation)) + ' - ' + song['artists'].translate(str.maketrans('', '', string.punctuation)) + '.mp3'
+                        filename = song['artists'].translate(str.maketrans('', '', string.punctuation)) + ' - ' + song['album'].translate(str.maketrans('', '', string.punctuation)) + ' - ' + song['title'].translate(str.maketrans('', '', string.punctuation)) + ' - ' + '.mp3'
                         try:
                             data = self.generate_Analyze_id(yt_id['id'])
                             try:
@@ -181,7 +226,13 @@ class MusicScraper(QThread):
                                 ## Save
                                 with open(os.path.join(music_folder, filename), 'wb') as f:
                                     f.write(link.content)
-
+                                    
+                                    SONG_META   = song
+                                    SONG_META['file'] = music_folder + "/" + filename
+                                    songTag = WritingMetaTags(tags=SONG_META, filename=music_folder + "/" + filename)
+                                    song_meta_add = songTag.WritingMetaTags()
+                                    print("downloaded "+filename)
+                            
                                 #Increment the counter
                                 self.increment_counter()
 

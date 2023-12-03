@@ -16,7 +16,8 @@ class Ui_MainWindow(object):
         MainWindow.setObjectName("MainWindow")
         MainWindow.resize(320, 390)
         MainWindow.setStyleSheet("QFrame#frame{\n"
-"    background-color: qlineargradient(spread:pad, x1:1.072045, y1:0.124, x2:0.368, y2:1, stop:0.227273 rgba(80, 214, 255, 155), stop:0.806818 rgba(112, 32,213,191));\n"
+#"    background-color: qlineargradient(spread:pad, x1:1.072045, y1:0.124, x2:0.368, y2:1, stop:0.227273 rgba(80, 214, 255, 155), stop:0.806818 rgba(112, 32,213,191));\n"
+"    background-color: qlineargradient(spread:pad, x1:1.072045, y1:0.124, x2:0.368, y2:1, stop:0.227273 rgba(200, 200, 200, 255), stop:0.806818 rgba(200, 200,200,255));\n"
 "    border-radius:10px;\n"
 "}\n"
 "QPushButton#Closed{\n"
