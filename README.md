@@ -4,6 +4,11 @@
 
 ## Updates
 
+- v2.1.1-hdavid
+  - add download cover
+  - skip already downloaded tracks
+  - grey + enlarged UI
+
 - v2.1.1 **Release** 19th October 2023
   - Fixed API Paths
   
