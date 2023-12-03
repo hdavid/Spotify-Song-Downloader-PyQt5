@@ -155,7 +155,6 @@ class MusicScraper(QThread):
 
     def errorcatch(self, SONG_ID):
         # The 'errorcatch' function from your scraper code
-        print('[*] Trying to download...')
         headers = {
             'authority': 'api.spotifydown.com',
             'method': 'GET',
@@ -204,44 +203,48 @@ class MusicScraper(QThread):
                 for count, song in enumerate(Tdata):
                     yt_id = self.get_ID(song['id'])
                     if yt_id is not None:
-                        filename = song['artists'].translate(str.maketrans('', '', string.punctuation)) + ' - ' + song['album'].translate(str.maketrans('', '', string.punctuation)) + ' - ' + song['title'].translate(str.maketrans('', '', string.punctuation)) + ' - ' + '.mp3'
-                        try:
-                            data = self.generate_Analyze_id(yt_id['id'])
+                        filename = song['artists'].translate(str.maketrans('', '', string.punctuation)) + ' - ' + song['album'].translate(str.maketrans('', '', string.punctuation)) + ' - ' + song['title'].translate(str.maketrans('', '', string.punctuation)) + '.mp3'
+                        if os.path.exists(music_folder + "/" + filename):
+                            print("Skipping (already downloaded) : " + filename)
+                        else:
+                            print("Downloading : " + filename)
                             try:
-                                DL_ID = data['links']['mp3']['mp3128']['k']
-                                DL_DATA = self.generate_Conversion_id(data['vid'], DL_ID)
-                                DL_LINK = DL_DATA['dlink']
-                            except Exception as NoLinkError:
-                                CatchMe = self.errorcatch(song['id'])
-                                if CatchMe is not None:
-                                    DL_LINK = CatchMe
-                            if DL_LINK is not None:
-                                ## DOWNLOAD
-                                link = self.session.get(DL_LINK)
+                                data = self.generate_Analyze_id(yt_id['id'])
+                                try:
+                                    DL_ID = data['links']['mp3']['mp3128']['k']
+                                    DL_DATA = self.generate_Conversion_id(data['vid'], DL_ID)
+                                    DL_LINK = DL_DATA['dlink']
+                                except Exception as NoLinkError:
+                                    CatchMe = self.errorcatch(song['id'])
+                                    if CatchMe is not None:
+                                        DL_LINK = CatchMe
+                                if DL_LINK is not None:
+                                    ## DOWNLOAD
+                                    link = self.session.get(DL_LINK)
 
-                                # Create Folder for Playlist
-                                if not os.path.exists(music_folder):
-                                    os.makedirs(music_folder)
+                                    # Create Folder for Playlist
+                                    if not os.path.exists(music_folder):
+                                        os.makedirs(music_folder)
 
-                                ## Save
-                                with open(os.path.join(music_folder, filename), 'wb') as f:
-                                    f.write(link.content)
+                                    ## Save
+                                    with open(os.path.join(music_folder, filename), 'wb') as f:
+                                        f.write(link.content)
                                     
-                                    SONG_META   = song
-                                    SONG_META['file'] = music_folder + "/" + filename
-                                    songTag = WritingMetaTags(tags=SONG_META, filename=music_folder + "/" + filename)
-                                    song_meta_add = songTag.WritingMetaTags()
-                                    print("downloaded "+filename)
+                                        SONG_META   = song
+                                        SONG_META['file'] = music_folder + "/" + filename
+                                        songTag = WritingMetaTags(tags=SONG_META, filename=music_folder + "/" + filename)
+                                        song_meta_add = songTag.WritingMetaTags()
+                                        print("ok!")
                             
-                                #Increment the counter
-                                self.increment_counter()
+                                    #Increment the counter
+                                    self.increment_counter()
 
-                                # Emit the signal with the downloaded song name
-                                self.song_downloaded.emit(filename.replace('.mp3',''))
-                            else:
-                                print('[*] No Download Link Found.')
-                        except Exception as error_status:
-                            print('[*] Error Status Code : ', error_status)
+                                    # Emit the signal with the downloaded song name
+                                    self.song_downloaded.emit(filename.replace('.mp3',''))
+                                else:
+                                    print('[*] No Download Link Found.')
+                            except Exception as error_status:
+                                print('[*] Error Status Code : ', error_status)
 
                     else:
                         print('[*] No data found for : ', song)
@@ -377,8 +380,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     Screen = MainWindow()
-    Screen.setFixedHeight(390)
-    Screen.setFixedWidth(320)
+    Screen.setFixedHeight(1390)
+    Screen.setFixedWidth(1320)
     Screen.setWindowFlags(Qt.FramelessWindowHint)
     Screen.setAttribute(Qt.WA_TranslucentBackground)
     Screen.show()
