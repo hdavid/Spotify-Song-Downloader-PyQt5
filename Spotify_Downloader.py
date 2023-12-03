@@ -17,8 +17,17 @@ import webbrowser
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import APIC, ID3
 
+import unicodedata
+    
+import traceback
 
-my_music_folder = "../Tracks/SpotifyDown"
+class Settings:
+    def __init__(self):        
+        self.music_folder = "../Tracks"
+        self.music_folder_use_playlist_name = True
+        self.skip_existing=True
+
+settings = Settings()
 
 class WritingMetaTags():
     def __init__(self, tags, filename):
@@ -64,14 +73,15 @@ class WritingMetaTags():
 
 
 class MusicScraper(QThread):
-    song_downloaded = pyqtSignal(str)
-    count_updated = pyqtSignal(int)
-
-
+    song_downloading = pyqtSignal(str)
+    counts = pyqtSignal(int, int, int)
 
     def __init__(self):
         super(MusicScraper, self).__init__()
-        self.counter = 0  # Initialize the counter to zero
+        self.downloaded_track_count = 0
+        self.failed_track_count = 0
+        self.skipped_track_count = 0
+        self.failed_tracks = ""
         self.session = requests.Session()
 
     def get_ID(self, yt_id):
@@ -153,8 +163,19 @@ class MusicScraper(QThread):
         }
         meta_data = self.session.get(headers=headers, url=URL)
         if meta_data.status_code == 200:
-            return meta_data.json()['title'] + ' - ' + meta_data.json()['artists']
+            return meta_data.json()
         return None
+
+    def slugify(self,fn):
+        validchars = "-_.() '"
+        out = ""
+        for c in fn:
+          if c != ',':
+              if str.isalpha(c) or str.isdigit(c) or (c in validchars):
+                out += c
+              else:
+                out += "-"
+        return out 
 
     def errorcatch(self, SONG_ID):
         # The 'errorcatch' function from your scraper code
@@ -172,14 +193,16 @@ class MusicScraper(QThread):
             return x.json()['link']
         return None
 
-    def scrape_playlist(self, spotify_playlist_link, music_folder):
-        ID = self.returnSPOT_ID(spotify_playlist_link)
-        PlaylistName = self.get_PlaylistMetadata(ID)
+    def scrape_playlist(self, playlist_id, music_folder):
+        playlist_metadata = self.get_PlaylistMetadata(playlist_id)        
+        if settings.music_folder_use_playlist_name:
+            
+            music_folder = music_folder + "/" + self.slugify(playlist_metadata['title'] + " ("+playlist_metadata['artists']+")")
 
         headers = {
             'authority': 'api.spotifydown.com',
             'method': 'GET',
-            'path': f'/trackList/playlist/{ID}',
+            'path': f'/trackList/playlist/{playlist_id}',
             'scheme': 'https',
             'accept': '*/*',
             'dnt': '1',
@@ -193,7 +216,7 @@ class MusicScraper(QThread):
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
         }
 
-        Playlist_Link = f'https://api.spotifydown.com/trackList/playlist/{ID}'
+        Playlist_Link = f'https://api.spotifydown.com/trackList/playlist/{playlist_id}'
         offset_data = {}
         offset = 0
         offset_data['offset'] = offset
@@ -204,59 +227,86 @@ class MusicScraper(QThread):
                 Tdata = response.json()['trackList']
                 page = response.json()['nextOffset']
                 for count, song in enumerate(Tdata):
-                    yt_id = self.get_ID(song['id'])
-                    if yt_id is not None:
-                        filename = song['artists'].translate(str.maketrans('', '', string.punctuation)) + ' - ' + song['album'].translate(str.maketrans('', '', string.punctuation)) + ' - ' + song['title'].translate(str.maketrans('', '', string.punctuation)) + '.mp3'
-                        if os.path.exists(music_folder + "/" + filename):
-                            print("Skipping (already downloaded) : " + filename)
-                        else:
-                            print("Downloading : " + filename)
-                            try:
-                                data = self.generate_Analyze_id(yt_id['id'])
-                                try:
-                                    DL_ID = data['links']['mp3']['mp3128']['k']
-                                    DL_DATA = self.generate_Conversion_id(data['vid'], DL_ID)
-                                    DL_LINK = DL_DATA['dlink']
-                                except Exception as NoLinkError:
-                                    CatchMe = self.errorcatch(song['id'])
-                                    if CatchMe is not None:
-                                        DL_LINK = CatchMe
-                                if DL_LINK is not None:
-                                    ## DOWNLOAD
-                                    link = self.session.get(DL_LINK)
-
-                                    # Create Folder for Playlist
-                                    if not os.path.exists(music_folder):
-                                        os.makedirs(music_folder)
-
-                                    ## Save
-                                    with open(os.path.join(music_folder, filename), 'wb') as f:
-                                        f.write(link.content)
-                                    
-                                        SONG_META   = song
-                                        SONG_META['file'] = music_folder + "/" + filename
-                                        songTag = WritingMetaTags(tags=SONG_META, filename=music_folder + "/" + filename)
-                                        song_meta_add = songTag.WritingMetaTags()
-                            
-                                    #Increment the counter
-                                    self.increment_counter()
-
-                                    # Emit the signal with the downloaded song name
-                                    self.song_downloaded.emit(filename.replace('.mp3',''))
-                                else:
-                                    print('[*] No Download Link Found.')
-                            except Exception as error_status:
-                                print('[*] Error Status Code : ', error_status)
-
-                    else:
-                        print('[*] No data found for : ', song)
+                    self.scrape_track(song, music_folder)
             if page is not None:
                 offset_data['offset'] = page
                 response = self.session.get(url=Playlist_Link, params=offset_data, headers=headers)
             else:
                 break
+    
+    def make_filename(self, song_metadata):
+          return self.slugify(song_metadata['artists']+ ' - ' + song_metadata['album'] + ' - ' + song_metadata['title'] + '.mp3')
+                  
+    def scrape_track(self, song, music_folder):
+        yt_id = self.get_ID(song['id'])
+        if yt_id is not None:
+            filename = self.make_filename(song)
+            self.song_downloading.emit(filename.replace('.mp3',''))
+            if settings.skip_existing and os.path.exists(music_folder + "/" + filename):
+                print("Skipping:\t" + filename)
+                self.skipped_track_count += 1
+                self.update_track_counts_ui()
+            else:
+                print("Downloading:\t" + filename)
+                try:
+                    data = self.generate_Analyze_id(yt_id['id'])
+                    try:
+                        DL_ID = data['links']['mp3']['mp3128']['k']
+                        DL_DATA = self.generate_Conversion_id(data['vid'], DL_ID)
+                        DL_LINK = DL_DATA['dlink']
+                    except Exception as NoLinkError:
+                        CatchMe = self.errorcatch(song['id'])
+                        if CatchMe is not None:
+                            DL_LINK = CatchMe
+                    if DL_LINK is not None:
+                        ## DOWNLOAD
+                        link = self.session.get(DL_LINK)
 
-    def returnSPOT_ID(self, link):
+                        # Create Folder for Playlist
+                        if not os.path.exists(music_folder):
+                            os.makedirs(music_folder)
+
+                        ## Save
+                        with open(os.path.join(music_folder, filename), 'wb') as f:
+                            f.write(link.content)
+                        
+                            SONG_META   = song
+                            SONG_META['file'] = music_folder + "/" + filename
+                            songTag = WritingMetaTags(tags=SONG_META, filename=music_folder + "/" + filename)
+                            song_meta_add = songTag.WritingMetaTags()
+                
+                        #Increment the counter
+                        self.downloaded_track_count += 1
+                        self.update_track_counts_ui()
+                    else:
+                        print('[*] No Download Link Found.')
+                        self.failed_track_count += 1
+                        self.failed_tracks += "\n"+filename
+                        self.update_track_counts_ui()
+                except Exception as error_status:
+                    print('[*] Error Status Code : ', error_status)
+                    self.failed_track_count += 1
+                    self.failed_tracks += "\n"+filename
+                    self.update_track_counts_ui()
+
+        else:
+            print('[*] No data found for : ', song)
+            self.failed_track_count += 1
+            self.failed_tracks += "\n"+filename
+            self.update_track_counts_ui()
+
+    def update_track_counts_ui(self):
+        self.counts.emit(self.downloaded_track_count, self.skipped_track_count, self.failed_track_count)
+        
+    
+    def is_playlist(self, link):
+        try:
+            self.get_playlist_id(link)
+            return True
+        except Exception:
+            return False
+    
+    def get_playlist_id(self, link):
         # # The 'returnSPOT_ID' function from your scraper code
         # return link.split('/')[-1].split('?si')[0]
 
@@ -272,10 +322,33 @@ class MusicScraper(QThread):
         extracted_id = match.group(1)
 
         return extracted_id
+      
+    def is_track(self, link):
+        try:
+            self.get_track_id(link)
+            return True
+        except Exception:
+            return False 
+             
+    def get_track_id(self, link):
+        # # The '' function from your scraper code
+        # return link.split('/')[-1].split('?si')[0]
 
-    def increment_counter(self):
-            self.counter += 1
-            self.count_updated.emit(self.counter)  # Emit the signal with the updated count
+        # Define the regular expression pattern for the Spotify playlist URL
+        pattern = r"https://open\.spotify\.com/track/([a-zA-Z0-9]+)\?si=.*"
+
+        # Try to match the pattern in the input text
+        match = re.match(pattern, link)
+
+        if not match:
+            raise ValueError("Invalid Spotify track URL.")
+        # Extract the playlist ID from the matched pattern
+        extracted_id = match.group(1)
+
+        return extracted_id
+        
+
+ # Emit the signal with the updated count
 
 # Scraper Thread
 class ScraperThread(QThread):
@@ -283,17 +356,34 @@ class ScraperThread(QThread):
 
     def __init__(self, playlist_link):
         super().__init__()
-        self.playlist_link = playlist_link
+        self.link = playlist_link
         self.scraper = MusicScraper()  # Create an instance of MusicScraper
 
     def run(self):
-        music_folder = os.path.join(os.getcwd(), my_music_folder)  # Change this path to your desired music folder
-        self.progress_update.emit("Scraping started...")
+        music_folder = os.path.join(os.getcwd(), settings.music_folder)
         try:
-            self.scraper.returnSPOT_ID(self.playlist_link)
-            self.scraper.scrape_playlist(self.playlist_link, music_folder)
-            self.progress_update.emit("Scraping completed.")
+            if self.scraper.is_playlist(self.link):
+                self.progress_update.emit("Scraping ...")
+                playlist_id = self.scraper.get_playlist_id(self.link)
+                self.scraper.scrape_playlist(playlist_id, music_folder)
+                self.progress_update.emit("Scraping completed.")
+                if self.scraper.failed_track_count>0:
+                    self.scraper.song_downloading.emit("Failed:\n"+self.scraper.failed_tracks)
+                    print("Failed:\n"+self.scraper.failed_tracks)
+                else:
+                    self.scraper.song_downloading.emit("")  
+            elif self.scraper.is_track(self.link):
+                self.progress_update.emit("Scraping ...")
+                trackid_id = self.scraper.get_track_id(self.link)
+                self.scraper.scrape_track(self.link, music_folder)
+                self.progress_update.emit("Scraping completed.")
+            else:
+                self.progress_update.emit("invalid link")
+                
+            
         except Exception as e:
+            print(e)
+            print(traceback.format_exc())
             self.progress_update.emit(f"{e}")
 
 
@@ -311,17 +401,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.setupUi(self)
 
-
-        self.PlaylistLink.returnPressed.connect(self.on_returnButton)
-        self.Closed.clicked.connect(self.exitprogram)
-        self.Select_Home.clicked.connect(self.Medium)
+        self.playlist_link.returnPressed.connect(self.on_returnButton)
+        self.close.clicked.connect(self.exitprogram)
+        #self.Select_Home.clicked.connect(self.Medium)
         # End main UI code
 
     # https://open.spotify.com/playlist/37i9dQZF1E36hkEAnydKTA?si=20caa5adfed648d3
 
     @pyqtSlot()
     def on_returnButton(self):
-        playlist_id = self.PlaylistLink.text()
+        playlist_id = self.playlist_link.text()
         try:
             # self.PlaylistMsg.setText('Playlist Code : %s' % playlist_id)
 
@@ -329,28 +418,34 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.scraper_thread = ScraperThread(playlist_id)
             self.scraper_thread.progress_update.connect(self.update_progress)
             self.scraper_thread.finished.connect(self.thread_finished)  # Connect the finished signal
-            self.scraper_thread.scraper.song_downloaded.connect(self.update_song_name)  # Connect the signal
+            self.scraper_thread.scraper.song_downloading.connect(self.update_song_downloading)  # Connect the signal
             # Connect the count_updated signal to the update_counter slot
-            self.scraper_thread.scraper.count_updated.connect(self.update_counter)
+            self.scraper_thread.scraper.counts.connect(self.update_counters)
 
             self.scraper_thread.start()
 
         except ValueError as e:
+            print(e)
+            print(traceback.format_exc())
             self.statusMsg.setText(str(e))
 
     def thread_finished(self):
         self.scraper_thread.deleteLater()  # Clean up the thread properly
 
     def update_progress(self, message):
-        self.statusMsg.setText(message)
+        self.status_msg.setText(message)
 
     @pyqtSlot(str)
-    def update_song_name(self, song_name):
-        self.SongName.setText(song_name)
+    def update_song_downloading(self, song_name):
+        self.song_name.setText(song_name)
 
-    @pyqtSlot(int)
-    def update_counter(self, count):
-        self.CounterLabel.setText("Counter : Songs downloaded " + str(count))
+    @pyqtSlot(int, int, int)
+    def update_counters(self, downloaded, skipped, failed):
+        if skipped != 0 or failed != 0:
+            self.counter_label.setText("Downloaded:" + str(downloaded)  + " skipped: "+str(skipped) + " failed:" + str(failed))
+        else:
+            self.counter_label.setText("Downloaded:" + str(downloaded))
+    
 
     # DRAGGLESS INTERFACE
 
