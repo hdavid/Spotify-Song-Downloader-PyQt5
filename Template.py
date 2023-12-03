@@ -11,13 +11,16 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 
+margin = 20
+width = 700
+
+
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(320, 390)
+        MainWindow.resize(width, 600)
         MainWindow.setStyleSheet("QFrame#frame{\n"
-#"    background-color: qlineargradient(spread:pad, x1:1.072045, y1:0.124, x2:0.368, y2:1, stop:0.227273 rgba(80, 214, 255, 155), stop:0.806818 rgba(112, 32,213,191));\n"
-"    background-color: qlineargradient(spread:pad, x1:0.5, y1:0.1, x2:0.5, y2:0.3, stop:0.227273 rgba(29, 185, 84, 255), stop:0.606818 rgba(0, 0,0,255));\n"
+"    background-color: qlineargradient(spread:pad, x1:0.5, y1:0.05, x2:0.5, y2:0.15, stop:0.227273 rgba(29, 185, 84, 255), stop:0.606818 rgba(0, 0,0,255));\n"
 "    border-radius:10px;\n"
 "}\n"
 "QPushButton#close{\n"
@@ -39,6 +42,12 @@ class Ui_MainWindow(object):
 "    color:rgba(255,255,255,255);\n"
 "}\n"
 "#counter_label{\n"
+"    color:rgba(255,255,255,255);\n"
+"}\n"
+"#playlist_name{\n"
+"    color:rgba(255,255,255,255);\n"
+"}\n"
+"#details{\n"
 "    color:rgba(255,255,255,255);\n"
 "}\n"
 "QPushButton#close:pressed{\n"
@@ -74,34 +83,34 @@ class Ui_MainWindow(object):
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.frame = QtWidgets.QFrame(self.centralwidget)
-        self.frame.setGeometry(QtCore.QRect(30, 20, 360, 350))
+        self.frame.setGeometry(QtCore.QRect(30, 20, width, 600))
         self.frame.setFrameShape(QtWidgets.QFrame.StyledPanel)
         self.frame.setFrameShadow(QtWidgets.QFrame.Raised)
         self.frame.setObjectName("frame")
         
         self.title = QtWidgets.QLabel(self.frame)
-        self.title.setGeometry(QtCore.QRect(0, 13, 260, 41))
+        self.title.setGeometry(QtCore.QRect(margin, 5, width-2*margin, 41))
         self.title.setMaximumSize(QtCore.QSize(16777204, 16777215))
         font = QtGui.QFont()
-        font.setFamily("Mistral")
+        #font.setFamily("Mistral")
         font.setPointSize(24)
         font.setBold(True)
         font.setWeight(75)
         self.title.setFont(font)
         self.title.setScaledContents(True)
-        self.title.setAlignment(QtCore.Qt.AlignCenter)
+        #self.title.setAlignment(QtCore.Qt.AlignCenter)
         self.title.setObjectName("label")
         
         self.close = QtWidgets.QPushButton(self.frame)
-        self.close.setGeometry(QtCore.QRect(330, 10, 20, 20))
+        self.close.setGeometry(QtCore.QRect(630, 10, 20, 20))
         self.close.setMaximumSize(QtCore.QSize(20, 20))
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPointSize(16)
         self.close.setFont(font)
         self.close.setObjectName("close")
         
         self.playlist_link = QtWidgets.QLineEdit(self.frame)
-        self.playlist_link.setGeometry(QtCore.QRect(30, 70, 300, 40))
+        self.playlist_link.setGeometry(QtCore.QRect(margin, 70, width-2*margin-30, 25))
         font = QtGui.QFont()
         font.setKerning(False)
         self.playlist_link.setFont(font)
@@ -114,58 +123,29 @@ class Ui_MainWindow(object):
         self.playlist_link.setClearButtonEnabled(True)
         self.playlist_link.setObjectName("playlist_link")
         
-        self.song_name = QtWidgets.QLabel(self.frame)
-        self.song_name.setGeometry(QtCore.QRect(30, 163, 351, 271))
-        font = QtGui.QFont()
-        font.setFamily("NSimSun")
-        font.setPointSize(10)
-        self.song_name.setFont(font)
-        self.song_name.setText("")
-        self.song_name.setWordWrap(True)
-        self.song_name.setObjectName("song_name")
-        
-        self.horizontalLayoutWidget_3 = QtWidgets.QWidget(self.frame)
-        self.horizontalLayoutWidget_3.setGeometry(QtCore.QRect(30, 270, 201, 20))
-        self.horizontalLayoutWidget_3.setObjectName("horizontalLayoutWidget_3")
-        self.horizontalLayout_3 = QtWidgets.QHBoxLayout(self.horizontalLayoutWidget_3)
-        self.horizontalLayout_3.setContentsMargins(4, 0, 0, 0)
-        self.horizontalLayout_3.setSpacing(0)
-        self.horizontalLayout_3.setObjectName("horizontalLayout_3")
-        
-        self.status_label = QtWidgets.QLabel(self.horizontalLayoutWidget_3)
-        self.status_label.setMinimumSize(QtCore.QSize(40, 0))
-        self.status_label.setMaximumSize(QtCore.QSize(40, 16777215))
-        font = QtGui.QFont()
-        font.setPointSize(8)
-        self.status_label.setFont(font)
-        self.status_label.setObjectName("status_label")
-        self.horizontalLayout_3.addWidget(self.status_label)
-        self.status_msg = QtWidgets.QLabel(self.horizontalLayoutWidget_3)
-        font = QtGui.QFont()
-        font.setPointSize(8)
-        
-        self.status_msg.setFont(font)
-        self.status_msg.setText("")
-        self.status_msg.setObjectName("status_msg")
-        self.horizontalLayout_3.addWidget(self.status_msg)
-        
-        self.song_name = QtWidgets.QLabel(self.frame)
-        self.song_name.setGeometry(QtCore.QRect(30, 150, 201, 22))
-        font = QtGui.QFont()
-        font.setFamily("NSimSun")
-        font.setPointSize(9)
-        self.song_name.setFont(font)
-        self.song_name.setWordWrap(True)
-        self.song_name.setObjectName("song_name")
+        self.playlist_name = QtWidgets.QLabel(self.frame)
+        self.playlist_name.setGeometry(QtCore.QRect(margin, 100, width-2*margin-30, 30))
+        self.playlist_name.setText("song playlist_name")
+        self.playlist_name.setWordWrap(True)
+        self.playlist_name.setText("")
+        self.playlist_name.setObjectName("playlist_name")
         
         self.counter_label = QtWidgets.QLabel(self.frame)
-        self.counter_label.setGeometry(QtCore.QRect(30, 240, 201, 22))
-        font = QtGui.QFont()
-        font.setFamily("NSimSun")
-        font.setPointSize(9)
-        self.counter_label.setFont(font)
+        self.counter_label.setGeometry(QtCore.QRect(margin, 130, width-2*margin-30, 30))
         self.counter_label.setWordWrap(True)
-        self.counter_label.setObjectName("counter_label")
+        self.counter_label.setObjectName("counter_label")        
+        
+        self.song_name = QtWidgets.QLabel(self.frame)
+        self.song_name.setGeometry(QtCore.QRect(margin, 160, width-2*margin-30, 30))
+        self.song_name.setText("song name")
+        self.song_name.setWordWrap(True)
+        self.song_name.setObjectName("song_name")
+        
+        self.details = QtWidgets.QLabel(self.frame)
+        self.details.setGeometry(QtCore.QRect(margin, 190, width-2*margin-30, 600-190-30))
+        self.details.setText("")
+        self.details.setWordWrap(True)
+        self.details.setObjectName("details")
 
         MainWindow.setCentralWidget(self.centralwidget)
 
@@ -178,7 +158,6 @@ class Ui_MainWindow(object):
         self.title.setText(_translate("MainWindow", "Spotify Downloader"))
         self.close.setText(_translate("MainWindow", "X"))
         self.playlist_link.setPlaceholderText(_translate("MainWindow", "Enter Spotify Playlist Link"))
-        self.status_label.setText(_translate("MainWindow", ""))
         self.song_name.setText(_translate("MainWindow", " "))
         self.counter_label.setText(_translate("MainWindow", ""))
      
