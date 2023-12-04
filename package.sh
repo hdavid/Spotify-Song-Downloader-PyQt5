@@ -7,7 +7,5 @@ pyinstaller --noconfirm --clean  -i SpotifyDownloader.icns --windowed SpotifyDow
 if [[ "$HOST" == "BE-BRU-MJX6DDQ1" || "$HOST" == "mots" ]]; then
 	rm -rf ../Tracks/SpotifyDownloader.app
 	mv dist/SpotifyDownloader.app ../Tracks
-	rm -rf dist
-	rm -rf build
 fi
 
