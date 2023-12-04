@@ -6,7 +6,8 @@ rm -rf ~/Music/Tracks/SpotifyDownloader.app
 
 pyinstaller --noconfirm --clean  -i icons/SpotifyDownloader.icns --windowed SpotifyDownloader.py
 
-if [[ "$HOST" == "BE-BRU-MJX6DDQ1" || "$HOST" == "mots" ]]; then
+host=`hostname -s`
+if [[ "$host" == "BE-BRU-MJX6DDQ1" || "$host" == "sixteen" ]]; then
 	rm -rf ../Tracks/SpotifyDownloader.app
 	cp -r dist/SpotifyDownloader.app ~/Music/Tracks
 fi
