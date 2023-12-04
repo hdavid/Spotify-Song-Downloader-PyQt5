@@ -8,7 +8,7 @@ pyinstaller --noconfirm --clean  -i icons/SpotifyDownloader.icns --windowed Spot
 
 host=`hostname -s`
 if [[ "$host" == "BE-BRU-MJX6DDQ1" || "$host" == "sixteen" ]]; then
-	rm -rf ../Tracks/SpotifyDownloader.app
-	cp -r dist/SpotifyDownloader.app ~/Music/Tracks
+	rm -rf /Applications/SpotifyDownloader.app
+	mv dist/SpotifyDownloader.app /Applications/
 fi
 

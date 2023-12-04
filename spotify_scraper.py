@@ -312,7 +312,8 @@ class SpotifyScraper(QObject):
                 os.makedirs(music_folder)
                 
             self.song_downloading.emit(song['artists']+ ' - ' + song['album'] + ' - ' + song['title'])
-            if os.path.exists(music_folder + "/" + filename):
+            full_filename = music_folder + "/" + filename
+            if os.path.exists(full_filename):
                 self.skipped_track_count += 1
                 self.update_track_counts_ui("Downloading")
             else:
@@ -331,9 +332,10 @@ class SpotifyScraper(QObject):
                         link = self.session.get(DL_LINK)
 
                         ## Save
-                        with open(os.path.join(music_folder, filename), 'wb') as f:
+                        with open(full_filename, 'wb') as f:
                             f.write(link.content)
-                            self.set_download_and_set_cover(tags=song, filename=music_folder + "/" + filename)
+                        
+                        self.set_download_and_set_cover(tags=song, full_filename=full_filename)
                 
                         #Increment the counter
                         self.downloaded_track_count += 1
@@ -355,14 +357,15 @@ class SpotifyScraper(QObject):
             self.failed_tracks.append(filename + ": No data found")
             self.update_track_counts_ui("Error")
     
-    def set_download_and_set_cover(self, tags, filename):
+    def set_download_and_set_cover(self, tags, full_filename):
         if tags['cover'] is None:
             pass
         else:
+            
             try:
                 response = requests.get(tags['cover']+"?size=1", stream=True)
                 if response.status_code == 200 :
-                    audio = ID3(filename)
+                    audio = ID3(full_filename)
                     audio['APIC'] = APIC(
                         encoding=3,
                         mime='image/jpeg',
@@ -371,6 +374,8 @@ class SpotifyScraper(QObject):
                         data=response.content
                     )
                     audio.save()
+                else:
+                    print(full_filename + " cover http error : " + str(response.status_code))
             except Exception as e:
                 print(f"Error adding cover: {e}")
                 

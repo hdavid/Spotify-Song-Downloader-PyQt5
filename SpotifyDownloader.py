@@ -24,18 +24,21 @@ class ScraperThread(QThread):
         super().__init__()
         self.link = link
         self.scraper = SpotifyScraper()
+        from os.path import expanduser
+        home = expanduser("~")
+        self.music_folder = home + "/Music/Tracks"
+        
         if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
             if platform.system() == "Windows":
                 self.music_folder = "."
             else:
                 if getattr(sys, 'frozen', False):
-                    self.music_folder = os.path.dirname(sys.executable) + "/../../.."
+                    if not os.path.dirname(sys.executable).startswith("/Applications"):
+                        self.music_folder = os.path.dirname(sys.executable) + "/../../.."
                 elif __file__:
-                    self.music_folder = os.path.dirname(__file__) + "/../../.."
-        else:
-            from os.path import expanduser
-            home = expanduser("~")
-            self.music_folder = home + "/Music/Tracks"
+                    if not os.path.dirname(__file__).startswith("/Applications"):
+                        self.music_folder = os.path.dirname(__file__) + "/../../.."
+            
 
     def run(self):
         self.scraper.scrape_item(self.link, self.music_folder)
