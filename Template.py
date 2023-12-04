@@ -20,7 +20,7 @@ class Ui_MainWindow(object):
         MainWindow.setObjectName("MainWindow")
         MainWindow.resize(width, 600)
         MainWindow.setStyleSheet("QFrame#frame{\n"
-"    background-color: qlineargradient(spread:pad, x1:0.5, y1:0.05, x2:0.5, y2:0.15, stop:0.227273 rgba(29, 185, 84, 255), stop:0.606818 rgba(0, 0,0,255));\n"
+"    background-color: qlineargradient(spread:pad, x1:0.5, y1:0.05, x2:0.5, y2:0.15, stop:0.227273 rgba(0, 192, 255, 255), stop:0.606818 rgba(0, 0,0,255));\n"
 "    border-radius:10px;\n"
 "}\n"
 "QPushButton#close{\n"
@@ -102,7 +102,7 @@ class Ui_MainWindow(object):
         self.title.setObjectName("label")
         
         self.close = QtWidgets.QPushButton(self.frame)
-        self.close.setGeometry(QtCore.QRect(630, 10, 20, 20))
+        self.close.setGeometry(QtCore.QRect(670, 10, 20, 20))
         self.close.setMaximumSize(QtCore.QSize(20, 20))
         font = QtGui.QFont()
         font.setPointSize(16)
@@ -146,6 +146,7 @@ class Ui_MainWindow(object):
         self.details.setText("")
         self.details.setWordWrap(True)
         self.details.setObjectName("details")
+        self.details.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
 
         MainWindow.setCentralWidget(self.centralwidget)
 

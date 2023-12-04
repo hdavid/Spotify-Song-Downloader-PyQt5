@@ -2,27 +2,25 @@
 # Main
 # if __name__ == '__main__':from PyQt5.uic import loadUi
 
-try:
-    from PyQt5.QtWidgets import QMainWindow, QApplication
-    from PyQt5.QtCore import Qt, QThread, pyqtSignal, pyqtSlot
-    from PyQt5.QtGui import  QCursor
-    from Template import Ui_MainWindow
+from PyQt5.QtWidgets import QMainWindow, QApplication
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, pyqtSlot
+from PyQt5.QtGui import  QCursor
+from Template import Ui_MainWindow
 
-    import sys
-    import os
-    import platform
-    import string
-    import requests
-    import re
-    import webbrowser
-    import unicodedata
-    import traceback
+import sys
+import os
+import platform
+import string
+import requests
+import re
+import webbrowser
+import unicodedata
+import traceback
+from unidecode import unidecode
 
-    from mutagen.easyid3 import EasyID3
-    from mutagen.id3 import APIC, ID3
-except Exception as e:
-    print ("dependencies are not installed")
-    print("run 'pip3 install -r requirements.txt' to fix")
+from mutagen.easyid3 import EasyID3
+from mutagen.id3 import APIC, ID3
+
 
     
 class Settings:
@@ -37,7 +35,9 @@ class Settings:
                     self.music_folder = os.path.dirname(__file__) + "/../../.."
                     #self.music_folder = "./../../.."
         else:
-            self.music_folder = "../Tracks"
+            from os.path import expanduser
+            home = expanduser("~")
+            self.music_folder = home + "/Music/Tracks"
         self.music_folder_use_playlist_name = True
         self.skip_existing=True
 
@@ -209,7 +209,7 @@ class MusicScraper(QThread):
             out += c
           else:
             out += "-"
-        return out 
+        return unidecode(out) 
 
     def errorcatch(self, song_id):
         # The 'errorcatch' function from your scraper code
@@ -456,7 +456,7 @@ class ScraperThread(QThread):
                 
                 in_folder_not_in_playlist = []
                 for track in self.scraper.directory_tracks:
-                    if track not in self.scraper.playlist_tracks and track != ".DS_Store":
+                    if track not in self.scraper.playlist_tracks and track != ".DS_Store" and not  track.startswith(".syncthing."):
                         in_folder_not_in_playlist.append(track)
                 if len(in_folder_not_in_playlist):
                     details += "\nTracks in folder but not in playlist:"
@@ -475,6 +475,7 @@ class ScraperThread(QThread):
                     details += "\n"
                     
                 self.details_update.emit(details)
+                print(details)
                         
             elif self.scraper.is_track(self.link):
                 self.details_update.emit("")
