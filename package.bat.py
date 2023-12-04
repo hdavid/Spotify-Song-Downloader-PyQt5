@@ -1,0 +1,1 @@
+pyinstaller --noconfirm  --clean  -i SpotifyDownloader.ico  --windowed SpotifyDownloader.py

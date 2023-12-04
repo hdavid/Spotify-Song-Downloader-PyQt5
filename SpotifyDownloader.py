@@ -10,6 +10,7 @@ try:
 
     import sys
     import os
+    import platform
     import string
     import requests
     import re
@@ -21,12 +22,22 @@ try:
     from mutagen.id3 import APIC, ID3
 except Exception as e:
     print ("dependencies are not installed")
-    print("run 'pip3 install -r req.txt' to fix")
+    print("run 'pip3 install -r requirements.txt' to fix")
 
+    
 class Settings:
     def __init__(self):
-        # MODIFY TO SUIT YOUR NEEDS        
-        self.music_folder = "../Tracks"
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            if platform.system() == "Windows":
+                self.music_folder = "."
+            else:
+                if getattr(sys, 'frozen', False):
+                    self.music_folder = os.path.dirname(sys.executable) + "/../../.."
+                elif __file__:
+                    self.music_folder = os.path.dirname(__file__) + "/../../.."
+                    #self.music_folder = "./../../.."
+        else:
+            self.music_folder = "../Tracks"
         self.music_folder_use_playlist_name = True
         self.skip_existing=True
 
@@ -254,9 +265,14 @@ class MusicScraper(QThread):
         return tracks
 
     def scrape_playlist(self, playlist_id, music_folder):
-        playlist_metadata = self.get_PlaylistMetadata(playlist_id)        
-        if settings.music_folder_use_playlist_name:
+        playlist_metadata = self.get_PlaylistMetadata(playlist_id)
+        if not playlist_metadata["success"]:
+            self.song_downloading.emit("not a valid playlist, Spotify api return error message: " + playlist_metadata["message"])
+            return
+            
+        if settings.music_folder_use_playlist_name: 
             music_folder = music_folder + "/" + self.slugify(playlist_metadata['title'] + " ("+playlist_metadata['artists']+")")
+
         
         self.playlist_name.emit(playlist_metadata['title'] + " ("+playlist_metadata['artists']+")")
         headers = {
@@ -276,14 +292,14 @@ class MusicScraper(QThread):
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
         }
 
-        Playlist_Link = f'https://api.spotifydown.com/trackList/playlist/{playlist_id}'
+        playlist_Link = f'https://api.spotifydown.com/trackList/playlist/{playlist_id}'
         offset_data = {}
         offset = 0
         offset_data['offset'] = offset
         self.playlist_track_count = self.get_playlist_size(playlist_id)
         self.update_track_counts_ui("Downloading")
         while offset is not None:
-            response = self.session.get(url=Playlist_Link, params=offset_data, headers=headers)
+            response = self.session.get(url=playlist_Link, params=offset_data, headers=headers)
             if response.status_code == 200:
                 Tdata = response.json()['trackList']
                 page = response.json()['nextOffset']
@@ -291,7 +307,7 @@ class MusicScraper(QThread):
                     self.scrape_track(song, music_folder)
             if page is not None:
                 offset_data['offset'] = page
-                response = self.session.get(url=Playlist_Link, params=offset_data, headers=headers)
+                response = self.session.get(url=playlist_Link, params=offset_data, headers=headers)
             else:
                 break
         self.song_downloading.emit("")
@@ -433,7 +449,7 @@ class ScraperThread(QThread):
                 details = ""   
                           
                 if len(self.scraper.failed_tracks)>0:
-                    details += "\nfailed track downloads:"
+                    details += "\nFailed track downloads:"
                     for track in self.scraper.failed_tracks:
                         details += "\n" + track
                     details += "\n"
@@ -443,7 +459,7 @@ class ScraperThread(QThread):
                     if track not in self.scraper.playlist_tracks and track != ".DS_Store":
                         in_folder_not_in_playlist.append(track)
                 if len(in_folder_not_in_playlist):
-                    details += "\nin folder but not in playlist:"
+                    details += "\nTracks in folder but not in playlist:"
                     for track in in_folder_not_in_playlist:
                         details += "\n" + track
                     details += "\n"
@@ -453,17 +469,17 @@ class ScraperThread(QThread):
                     if track not in self.scraper.directory_tracks:
                          in_playlist_not_in_folder.append(track)
                 if len(in_playlist_not_in_folder):
-                    details += "\nin playlist but not in folder:"
+                    details += "\nTracks in playlist but not in folder:"
                     for track in in_playlist_not_in_folder:
                         details += "\n" + track
                     details += "\n"
-                        
+                    
                 self.details_update.emit(details)
                         
             elif self.scraper.is_track(self.link):
                 self.details_update.emit("")
                 self.scraper.song_downloading.emit("")
-                self.scraper.playlist_name.emit("single track")
+                self.scraper.playlist_name.emit("Single track")
                 self.scraper.playlist_track_count = 1
                 self.scraper.update_track_counts_ui("Downloading")
                 trackid_id = self.scraper.get_track_id(self.link)
