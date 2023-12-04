@@ -56,7 +56,7 @@ The Spotify song downloader uses web scraping to interact with a specific websit
 
 ### Using it
 1. Enter the Spotify playlist or track link and press Enter.
-2. The application will start scraping the website and downloading the songs to a local folder named 
+2. The application will start scraping the website and downloading the songs to a local folder
 
 #### Note
 while running from command line, it will download the files to : `~/Music/Tracks/'playlist name'`
