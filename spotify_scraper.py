@@ -262,7 +262,7 @@ class SpotifyScraper(QObject):
         
         in_folder_not_in_playlist = []
         for track in self.directory_tracks:
-            if track not in self.playlist_tracks and track != ".DS_Store" and not  track.startswith(".syncthing."):
+            if track not in self.playlist_tracks and track != ".DS_Store" and not track.startswith(".syncthing.") and not track.endswith(".stem.m4a"):
                 in_folder_not_in_playlist.append(track)
         if len(in_folder_not_in_playlist):
             details += "\nTracks in folder but not in playlist:"
