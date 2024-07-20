@@ -41,7 +41,7 @@ class ScraperThread(QThread):
             
 
     def run(self):
-        self.scraper.scrape_item(self.link, self.music_folder)
+        self.scraper.scrape(self.link, self.music_folder)
 
 
 # Main Window

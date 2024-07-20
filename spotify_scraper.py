@@ -1,269 +1,202 @@
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
-
-from mutagen.easyid3 import EasyID3
-from mutagen.id3 import APIC, ID3
-
-import sys
-import os
-import platform
-import string
-import requests
+import json
 import re
-import webbrowser
-import unicodedata
+import requests
+import signal
+import sys
 import traceback
 from unidecode import unidecode
+from dataclasses import dataclass
+
+#from datetime import datetime
+from pathlib import Path
+from time import sleep
+import os
+
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+
+# Want to figure out how to do this without a third party module
+import eyed3
+from eyed3.id3 import ID3_V2_3
+from eyed3.id3.frames import ImageFrame
+
+# Suppress warnings about CRC fail for cover art
+import logging
+logging.getLogger('eyed3.mp3.headers').warning = logging.debug
+
+
+
+def clean_filename(fn):
+    validchars = "-_.() '',"
+    out = ""
+    for c in fn:
+      if str.isalpha(c) or str.isdigit(c) or (c in validchars):
+        out += c
+      else:
+        out += "-"
+    return unidecode(out)
+    
+    
+@dataclass(frozen=True, eq=True)
+class SpotifySong:
+    title: str
+    artist: str
+    album: str
+    id: str
+    
+    @property
+    def url(self):
+         return f"https://open.spotify.com/track/{id}"
+    
+    @property
+    def filename(self):
+        return clean_filename(f"{self.artist} - {self.album} - {self.title}.mp3")
+        
+    @property
+    def name(self): 
+        return f"{self.artist} - {self.album} - {self.title}"
 
 
 class SpotifyScraper(QObject):
+    
     song_downloading = pyqtSignal(str)
     counts = pyqtSignal(str, int, int, int, int)
     playlist_name = pyqtSignal(str)
     details_update = pyqtSignal(str)
+    
+    DOWNLOADER_URL = "https://api.spotifydown.com"
+    # Clean browser heads for API
+    DOWNLOADER_HEADERS = {
+        'Host': 'api.spotifydown.com',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip',
+        'Referer': 'https://spotifydown.com/',
+        'Origin': 'https://spotifydown.com',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-site',
+        'Sec-GPC': '1',
+        'TE': 'trailers'
+    }
 
+    
     def __init__(self):
         super(SpotifyScraper, self).__init__()
-        self.playlist_track_count = 0
-        self.downloaded_track_count = 0
-        self.failed_track_count = 0
-        self.skipped_track_count = 0
-        self.failed_tracks = []
         self.playlist_tracks = []
-        self.directory_tracks = []
+        self.downloaded_tracks = []
+        self.skipped_tracks = []
+        self.failed_tracks = []
         
-        self.session = requests.Session()
-
-    def get_ID(self, id):
-        LINK = f'https://api.spotifydown.com/getId/{id}'
-        headers = {
-            'authority': 'api.spotifydown.com',
-            'method': 'GET',
-            'path': f'/getId/{id}',
-            'origin': 'https://spotifydown.com',
-            'referer': 'https://spotifydown.com/',
-            'sec-ch-ua': '"Not_A Brand";v="99", "Google Chrome";v="109", "Chromium";v="109"',
-            'sec-fetch-mode': 'cors',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
-        }
-        response = self.session.get(url=LINK, headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            return data
-        return None
-
-    def generate_Analyze_id(self, id):
-        DL = 'https://corsproxy.io/?https://www.y2mate.com/mates/analyzeV2/ajax'
-        data = {
-            'k_query': f'https://www.youtube.com/watch?v={id}',
-            'k_page': 'home',
-            'hl': 'en',
-            'q_auto': 0,
-        }
-        headers = {
-            'authority': 'corsproxy.io',
-            'method': 'POST',
-            'path': '/?https://www.y2mate.com/mates/analyzeV2/ajax',
-            'origin': 'https://spotifydown.com',
-            'referer': 'https://spotifydown.com/',
-            'sec-ch-ua': '"Not_A Brand";v="99", "Google Chrome";v="109", "Chromium";v="109"',
-            'sec-fetch-mode': 'cors',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
-        }
-        RES = self.session.post(url=DL, data=data, headers=headers)
-        if RES.status_code == 200:
-            return RES.json()
-        return None
-
-    def generate_Conversion_id(self, analyze_yt_id, analyze_id):
-        DL = 'https://corsproxy.io/?https://www.y2mate.com/mates/convertV2/index'
-        data = {
-            'vid'   : analyze_yt_id,
-            'k'     : analyze_id,
-        }
-        headers = {
-            'authority': 'corsproxy.io',
-            'method': 'POST',
-            'path': '/?https://www.y2mate.com/mates/analyzeV2/ajax',
-            'origin': 'https://spotifydown.com',
-            'referer': 'https://spotifydown.com/',
-            'sec-ch-ua': '"Not_A Brand";v="99", "Google Chrome";v="109", "Chromium";v="109"',
-            'sec-fetch-mode': 'cors',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36'
-        }
-        RES = self.session.post(url=DL, data=data, headers=headers)
-        if RES.status_code == 200:
-            return RES.json()
-        return None
-
-    def get_track_metadata(self, track_id):
-        # The 'get_PlaylistMetadata' function from your scraper code
-        URL = f'https://api.spotifydown.com/metadata/track/{track_id}'
-        headers = {
-            'authority': 'api.spotifydown.com',
-            'method': 'GET',
-            'path': f'/metadata/track/{track_id}',
-            'scheme': 'https',
-            'origin': 'https://spotifydown.com',
-            'referer': 'https://spotifydown.com/',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36',
-        }
-        meta_data = self.session.get(headers=headers, url=URL)
-        if meta_data.status_code == 200:
-            return meta_data.json()
-        return None
-        
-
-    def get_PlaylistMetadata(self, Playlist_ID):
-        # The 'get_PlaylistMetadata' function from your scraper code
-        URL = f'https://api.spotifydown.com/metadata/playlist/{Playlist_ID}'
-        headers = {
-            'authority': 'api.spotifydown.com',
-            'method': 'GET',
-            'path': f'/metadata/playlist/{Playlist_ID}',
-            'scheme': 'https',
-            'origin': 'https://spotifydown.com',
-            'referer': 'https://spotifydown.com/',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36',
-        }
-        meta_data = self.session.get(headers=headers, url=URL)
-        if meta_data.status_code == 200:
-            return meta_data.json()
-        return None
-
-    def errorcatch(self, song_id):
-        # The 'errorcatch' function from your scraper code
-        headers = {
-            'authority': 'api.spotifydown.com',
-            'method': 'GET',
-            'path': f'/download/{song_id}',
-            'scheme': 'https',
-            'origin': 'https://spotifydown.com',
-            'referer': 'https://spotifydown.com/',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36',
-        }
-        x = self.session.get(headers=headers, url='https://api.spotifydown.com/download/' + song_id)
-        if x.status_code == 200:
-            return x.json()['link']
-        return None
     
-    def scrape_item(self, link, music_folder):
-        try:
-            if self.is_playlist(link):
-                self.scrape_playlist(link, music_folder)                    
-            elif self.is_track(link):
-                self.scrape_single_track(link, music_folder) 
-            else:
-                self.details_update.emit("Invalid link")
-        except Exception as e:
-            print(e)
-            print(traceback.format_exc())
-            self.details_update.emit(f"{e}")
-    
-    def get_playlist_size(self, playlist_id):
-        headers = {
-            'authority': 'api.spotifydown.com',
-            'method': 'GET',
-            'path': f'/trackList/playlist/{playlist_id}',
-            'scheme': 'https',
-            'accept': '*/*',
-            'dnt': '1',
-            'origin': 'https://spotifydown.com',
-            'referer': 'https://spotifydown.com/',
-            'sec-ch-ua': '"Chromium";v="110", "Not A(Brand";v="24", "Google Chrome";v="110"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
-        }
-
-        playlist_link = f'https://api.spotifydown.com/trackList/playlist/{playlist_id}'
-        offset_data = {}
-        offset = 0
-        offset_data['offset'] = offset
-        tracks = 0
-        while offset is not None:
-            response = self.session.get(url=playlist_link, params=offset_data, headers=headers)
-            if response.status_code == 200:
-                Tdata = response.json()['trackList']
-                page = response.json()['nextOffset']
-                tracks += len(Tdata)
-            if page is not None:
-                offset_data['offset'] = page
-                response = self.session.get(url=playlist_link, params=offset_data, headers=headers)
-            else:
-                break
-        
-        return tracks
-   
+    def is_album(self, url):
+            return "/album/" in url 
+           
             
-    def scrape_playlist(self, link, music_folder):
+    def is_playlist(self, url):
+            return "/playlist/" in url
+    
+    
+    def is_track(self, url):
+        return "/track/" in url
+        
+        
+    @property
+    def playlist_track_count(self):
+        return len(self.playlist_tracks)
+        
+        
+    @property
+    def downloaded_track_count(self):
+        return len(self.downloaded_tracks)
+    
+    
+    @property
+    def skipped_track_count(self):
+        return len(self.skipped_tracks)
+    
+    
+    @property
+    def failed_track_count(self):
+        return len(self.failed_tracks)
+        
+             
+    def scrape(self, url, music_folder):
         self.details_update.emit("")
-        self.song_downloading.emit("")
         
-        playlist_id = self.get_item_id(link, kind="playlist")
-        playlist_metadata = self.get_PlaylistMetadata(playlist_id)
-        self.playlist_name.emit("Playlist: " + playlist_metadata['title'] + " ("+playlist_metadata['artists']+")")
-        
-        if not playlist_metadata["success"]:
-            self.song_downloading.emit("not a valid playlist, Spotify api return error message: " + playlist_metadata["message"])
-            return
-            
-        music_folder = music_folder + "/" + self.clean_filename(playlist_metadata['title'] + " ("+playlist_metadata['artists']+")")
-        
-        headers = {
-            'authority': 'api.spotifydown.com',
-            'method': 'GET',
-            'path': f'/trackList/playlist/{playlist_id}',
-            'scheme': 'https',
-            'accept': '*/*',
-            'dnt': '1',
-            'origin': 'https://spotifydown.com',
-            'referer': 'https://spotifydown.com/',
-            'sec-ch-ua': '"Chromium";v="110", "Not A(Brand";v="24", "Google Chrome";v="110"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
-        }
-
-        playlist_Link = f'https://api.spotifydown.com/trackList/playlist/{playlist_id}'
-        offset_data = {}
-        offset = 0
-        offset_data['offset'] = offset
-        self.playlist_track_count = self.get_playlist_size(playlist_id)
-        self.update_track_counts_ui("Downloading")
-        while offset is not None:
-            response = self.session.get(url=playlist_Link, params=offset_data, headers=headers)
-            if response.status_code == 200:
-                Tdata = response.json()['trackList']
-                page = response.json()['nextOffset']
-                for count, song in enumerate(Tdata):
-                    self.scrape_track(song, music_folder)
-            if page is not None:
-                offset_data['offset'] = page
-                response = self.session.get(url=playlist_Link, params=offset_data, headers=headers)
+        if self.is_playlist(url) or self.is_album(url):
+            entity_id = url.split('/')[-1].split('?')[0]
+            if self.is_playlist(url):
+                entity_type = "playlist"
             else:
-                break
-        self.song_downloading.emit("")
-        self.directory_tracks = os.listdir(music_folder)
-        self.update_track_counts_ui("Done")
-        self.update_playlist_scrape_details()
+                entity_type = "album"
+                
+            entity_metadata = self._call_downloader_api(f"/metadata/playlist/{entity_id}").json()
+            if entity_type == "playlist":
+                entity_name = entity_metadata['title'] + " (" + entity_metadata['artists'] + ")"
+            else:
+                entity_name = entity_metadata['artists']+ " - " + entity_metadata['title']
+            
+            self.playlist_name.emit(entity_type + ": " + entity_name)
+            
+            if not entity_metadata["success"]:
+                self.song_downloading.emit("not a valid "+ entity_name + ", Spotify api return error message: " + playlist_metadata["message"])
+                return                
+            
+            music_folder = Path(music_folder + "/" + entity_name)
+            
+        elif self.is_track(url):
+            self.details_update.emit("")
+            self.song_downloading.emit("")
+            self.playlist_name.emit("Single track")
+            entity_type = "track"
+            music_folder = Path(music_folder)
+            entity_id = url.split('/')[-1].split('?')[0]
+        else:
+            self.details_update.emit("Invalid url")
+            return
         
-    def update_playlist_scrape_details(self):
+        if not os.path.exists(music_folder):
+            os.makedirs(music_folder)
+            
+        self.update_track_counts_ui("Scanning")
+        self.playlist_tracks = self.get_tracks_to_download(entity_type, entity_id)
+        
+        self.update_track_counts_ui("Downloading")
+        self.download_all_tracks(
+            self.playlist_tracks,
+            music_folder
+        )
+        if self.is_track(url):
+            self.update_track_scrape_details()
+        else:
+            self.update_playlist_scrape_details(music_folder)
+        self.song_downloading.emit("")
+        self.update_track_counts_ui("Done")
+        
+    
+    def update_track_counts_ui(self, message):
+        self.counts.emit(message, self.playlist_track_count, self.downloaded_track_count, self.skipped_track_count, self.failed_track_count)  
+        
+    def update_playlist_scrape_details(self, music_folder):
         details = ""   
-                  
-        if len(self.failed_tracks)>0:
+                 
+        if self.failed_track_count>0:
             details += "\nFailed track downloads:"
             for track in self.failed_tracks:
-                details += "\n" + track
+                details += "\n" + track.name
             details += "\n"
         
+        directory_files = os.listdir(music_folder)
         in_folder_not_in_playlist = []
-        for track in self.directory_tracks:
-            if track not in self.playlist_tracks and track != ".DS_Store" and not track.startswith(".syncthing.") and not track.endswith(".stem.m4a"):
-                in_folder_not_in_playlist.append(track)
+        playlist_filenames = []
+        for track in self.playlist_tracks:
+            playlist_filenames.append(track.filename)
+        for filename in directory_files:
+            if filename not in playlist_filenames and filename != ".DS_Store" and not filename.startswith(".syncthing.") and not filename.endswith(".stem.m4a"):
+                in_folder_not_in_playlist.append(filename)
         if len(in_folder_not_in_playlist):
             details += "\nTracks in folder but not in playlist:"
             for track in in_folder_not_in_playlist:
@@ -272,131 +205,25 @@ class SpotifyScraper(QObject):
                 
         in_playlist_not_in_folder = []
         for track in self.playlist_tracks:
-            if track not in self.directory_tracks:
-                 in_playlist_not_in_folder.append(track)
+            if track.filename not in directory_files:
+                 in_playlist_not_in_folder.append(track.name)
         if len(in_playlist_not_in_folder):
             details += "\nTracks in playlist but not in folder:"
             for track in in_playlist_not_in_folder:
                 details += "\n" + track
             details += "\n"
         
-        if len(in_playlist_not_in_folder)==0 and len(in_folder_not_in_playlist)==0 and len(self.failed_tracks)==0:
+        if len(in_playlist_not_in_folder)==0 and len(in_folder_not_in_playlist)==0 and self.failed_track_count==0:
             details += "Hurray ! All downloads completed sucessfully!\n\n\n\n"
             
         self.details_update.emit(details)
-        print(details)
         
-    
-    def clean_filename(self,fn):
-        validchars = "-_.() '',"
-        out = ""
-        for c in fn:
-          if str.isalpha(c) or str.isdigit(c) or (c in validchars):
-            out += c
-          else:
-            out += "-"
-        return unidecode(out)
-        
-    
-    def make_filename(self, song):
-        return self.clean_filename(song['artists']+ ' - ' + song['album'] + ' - ' + song['title'] + '.mp3')
-
-        
-    def scrape_track(self, song, music_folder):
-        yt_id = self.get_ID(song['id'])
-        filename = self.make_filename(song)
-        self.playlist_tracks.append(filename)
-        if yt_id is not None:
-            # Create Folder for Playlist
-            if not os.path.exists(music_folder):
-                os.makedirs(music_folder)
-                
-            self.song_downloading.emit(song['artists']+ ' - ' + song['album'] + ' - ' + song['title'])
-            full_filename = music_folder + "/" + filename
-            if os.path.exists(full_filename):
-                self.skipped_track_count += 1
-                self.update_track_counts_ui("Downloading")
-            else:
-                try:
-                    data = self.generate_Analyze_id(yt_id['id'])
-                    try:
-                        DL_ID = data['links']['mp3']['mp3128']['k']
-                        DL_DATA = self.generate_Conversion_id(data['vid'], DL_ID)
-                        DL_LINK = DL_DATA['dlink']
-                    except Exception as NoLinkError:
-                        CatchMe = self.errorcatch(song['id'])
-                        if CatchMe is not None:
-                            DL_LINK = CatchMe
-                    if DL_LINK is not None:
-                        ## DOWNLOAD
-                        link = self.session.get(DL_LINK)
-
-                        ## Save
-                        with open(full_filename, 'wb') as f:
-                            f.write(link.content)
-                        
-                        self.set_download_and_set_cover(tags=song, full_filename=full_filename)
-                
-                        #Increment the counter
-                        self.downloaded_track_count += 1
-                        self.update_track_counts_ui("Downloading")
-                    else:
-                        print('[*] No Download Link Found for '+filename)
-                        self.failed_track_count += 1
-                        self.failed_tracks.append(filename + ": No Download Link Found")
-                        self.update_track_counts_ui("Error")
-                except Exception as error_status:
-                    print('[*] Error Status Code : '+ str(error_status) +  filename)
-                    self.failed_track_count += 1
-                    self.failed_tracks.append(filename + ": Error Status Code : " + str(error_status))
-                    self.update_track_counts_ui("Error")
-
-        else:
-            print('[*] No data found for : ', song)
-            self.failed_track_count += 1
-            self.failed_tracks.append(filename + ": No data found")
-            self.update_track_counts_ui("Error")
-    
-    def set_download_and_set_cover(self, tags, full_filename):
-        if tags['cover'] is None:
-            pass
-        else:
-            
-            try:
-                response = requests.get(tags['cover']+"?size=1", stream=True)
-                if response.status_code == 200 :
-                    audio = ID3(full_filename)
-                    audio['APIC'] = APIC(
-                        encoding=3,
-                        mime='image/jpeg',
-                        type=3,
-                        desc=u'Cover',
-                        data=response.content
-                    )
-                    audio.save()
-                else:
-                    print(full_filename + " cover http error : " + str(response.status_code))
-            except Exception as e:
-                print(f"Error adding cover: {e}")
-                
-    def scrape_single_track(self,link, music_folder):
-        self.details_update.emit("")
-        self.song_downloading.emit("")
-        self.playlist_name.emit("Single track")
-        self.playlist_track_count = 1
-        self.update_track_counts_ui("Downloading")
-        trackid_id = self.get_item_id(link, kind="track")
-        song = self.get_track_metadata(trackid_id)
-        self.scrape_track(song, music_folder)
-        self.update_track_counts_ui("Done")
-        self.update_track_scrape_details()
-    
     
     def update_track_scrape_details(self):
         details = ""
         
         if len(self.failed_tracks)>0:
-            details += "\nFailed track downloads:"
+            details += "\nFailed track download:"
             for track in self.failed_tracks:
                 details += "\n" + track
             details += "\n"
@@ -405,44 +232,242 @@ class SpotifyScraper(QObject):
             details += "Hurray ! Download completed sucessfully!\n\n\n\n"
             
         self.details_update.emit(details)
-        print(details)  
+    
+
+    def _call_downloader_api(
+        self,
+        endpoint: str,
+        method: str = 'GET',
+        headers=DOWNLOADER_HEADERS,
+        **kwargs
+    ) -> requests.Response:
+        _map = {
+            'GET': requests.get,
+            'POST': requests.post
+        }
+
+        if method not in _map:
+            raise ValueError
+
+        try:
+            resp = _map[method](self.DOWNLOADER_URL + endpoint, headers=headers, **kwargs)
+        except Exception as exc:
+            raise RuntimeError("ERROR: ", exc)
+
+        return resp
 
 
-    def update_track_counts_ui(self, message):
-        self.counts.emit(message, self.playlist_track_count, self.downloaded_track_count, self.skipped_track_count, self.failed_track_count)
+    def get_track_data(self, track_id: str):
+        resp = self._call_downloader_api(f"/download/{track_id}")
+        resp_json = resp.json()
+        if not resp_json['success']:
+            # print("[!] Bad URL. No song found.")
+            resp_json = {}
+        return resp_json
+
+
+    def get_multi_track_data(self, entity_id: str, entity_type: str):
+        metadata_resp = self._call_downloader_api(f"/metadata/{entity_type}/{entity_id}").json()
+
+        # For paginated response
+        track_list = []
+
+        tracks_resp = self._call_downloader_api(f"/trackList/{entity_type}/{entity_id}").json()
+
+        if not tracks_resp.get('trackList'):
+            return {}
+
+        track_list.extend(tracks_resp['trackList'])
+
+        while next_offset := tracks_resp.get('nextOffset'):
+            tracks_resp = self._call_downloader_api(f"/trackList/{entity_type}/{entity_id}?offset={next_offset}").json()
+            track_list.extend(tracks_resp['trackList'])
+
+        if not metadata_resp['success']:
+            return {}
+
+        return {
+            **metadata_resp,
+            'trackList': [
+                SpotifySong(
+                    title=track['title'],
+                    artist=track['artists'],
+                    album=track['album'] if entity_type == "playlist" else metadata_resp['title'],
+                    id=track['id']
+                )
+                for track in track_list
+            ]
+        }
+
+
+    def get_spotify_playlist(self, playlist_id: str, token: str):
+        # GET to playlist URL can get first 30 songs only
+        # soup.find_all('meta', content=re.compile("https://open.spotify.com/track/\w+"))
+
+        playlist_resp = requests.get(
+            f'https://api.spotify.com/v1/playlists/{playlist_id}',
+            headers={'Authorization': f"Bearer {token}"}
+        )
+
+        playlist = playlist_resp.json()
+
+        tracks_list = [
+            SpotifySong(
+                title=track['track']['name'],
+                artist=', '.join(artist['name'] for artist in track['track']['artists']),
+                album=track['track']['album']['name'],
+                id=track['track']['id']
+            )
+            for track in playlist['tracks']['items']
+        ]
+
+        return playlist['name'], playlist['owner']['display_name'], tracks_list
+    
+
+
+    def get_tracks_to_download(self, entity_type: str, entity_id: str) -> list:
+        tracks = []
+
+        if entity_type == "track":
+            track_resp_json = self.get_track_data(track_id=entity_id)
+            if not track_resp_json:
+                self.update_track_counts_ui("Error")
+                details = "no track found at url"
+                self.details_update.emit(details)
+                return []
+            
+            spotify_song = SpotifySong(
+                title=track_resp_json['metadata']['title'],
+                artist=track_resp_json['metadata']['artists'] ,
+                album=track_resp_json['metadata']['album'],
+                id=track_resp_json['metadata']['id']
+            )
+            self.playlist_tracks.append(spotify_song.filename)
+            tracks.append(spotify_song)
+            
+
+        elif entity_type in ["playlist", "album"]:
+
+            multi_track_resp_json = self.get_multi_track_data(entity_id, entity_type)
+
+            if not multi_track_resp_json:
+                self.update_track_counts_ui("Error")
+                details = "no track found at url"
+                self.details_update.emit(details)
+                return []
+
+            for track in multi_track_resp_json['trackList']:
+                tracks.append(track)
+                self.playlist_tracks.append(track.filename)
+
+        else:
+            return []
+
+        return tracks
+
+
+    def download_track(self, track:SpotifySong, dest_dir: Path):
         
-    
-    def is_playlist(self, link):
-        try:
-            self.get_item_id(link, kind="playlist")
-            return True
-        except Exception:
-            return False
-    
-    
-    def is_track(self, link):
-        try:
-            self.get_item_id(link, kind="track")
-            return True
-        except Exception:
-            return False
-    
-    
-    def get_item_id(self, link, kind="playlist"):
-        # # The 'returnSPOT_ID' function from your scraper code
-        # return link.split('/')[-1].split('?si')[0]
-        pattern = r"https://open\.spotify\.com/"+kind+"/([a-zA-Z0-9]+)\?si=.*"
-        match = re.match(pattern, link)
-        if not match:
-            raise ValueError("Invalid Spotify "+kind+" URL.")
-        extracted_id = match.group(1)
-        return extracted_id
+        # Grab a fresh download link since the one was got may have expired
+        resp_json = self.get_track_data(track.id)
+        # Clean browser heads for API
+        hdrs = {
+            #'Host': 'cdn[#].tik.live', # <-- set this below
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip',
+            'Referer': 'https://spotifydown.com/',
+            'Origin': 'https://spotifydown.com',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'cross-site',
+            'Sec-GPC': '1'
+        }
+
+        if 'link' not in resp_json or 'metadata' not in resp_json:
+            raise RuntimeError(
+                f"Bad response for track '{track.name}' ({track.id}): {resp_json}"
+            )
+
+        # For audio
+        hdrs['Host'] = resp_json['link'].split('/')[2]
+        audio_dl_resp = requests.get(resp_json['link'], headers=hdrs)
+        
+        
+        if not audio_dl_resp.ok:
+            raise RuntimeError(
+                f"Bad download response for track '{track.title}' ({track.id}): {audio_dl_resp.content}"
+            )
+        
+        with open(dest_dir/track.filename, 'wb') as track_mp3_fp:
+            track_mp3_fp.write(audio_dl_resp.content)
+
+        # For cover art
+        if cover_art_url := resp_json['metadata'].get('cover'):
+            hdrs['Host'] = cover_art_url.split('/')[2]
+            cover_resp = requests.get(cover_art_url,headers=hdrs)
+
+            mp3_file = eyed3.load(dest_dir/track.filename)
+            if (mp3_file.tag == None):
+                mp3_file.initTag()
+
+            mp3_file.tag.images.set(ImageFrame.FRONT_COVER, cover_resp.content, 'image/jpeg')
+            mp3_file.tag.album = resp_json['metadata']['album']
+            mp3_file.tag.recording_date = resp_json['metadata']['releaseDate']
+
+            # default version lets album art show up in Serato
+            #mp3_file.tag.save()
+            # version fixes FRONT_COVER not showing up in windows explorer
+            mp3_file.tag.save(version=ID3_V2_3)
+            
+        # prevent API throttling
+        sleep(0.1)
+
+
+    def download_all_tracks(
+        self,
+        tracks: list,
+        output_dir: Path
+    ):
+       
+        for track in tracks:
+            self.song_downloading.emit(track.name)
+            full_filename = output_dir / track.filename
+            try:
+                if os.path.exists(full_filename):
+                    self.skipped_tracks.append(track)
+                else:
+                    ok = False
+                    errors = 0
+                    while not ok:
+                        try:
+                            self.download_track(track, output_dir)
+                            self.downloaded_tracks.append(track)
+                            ok = True
+                        except Exception as exc:
+                            print(exc)
+                            print('Retrying!')
+                            sleep(1)
+                            errors += 1
+                            if errors>3:
+                                raise exc
+                self.update_track_counts_ui("Downloading")
+            except Exception as exc:
+                print(traceback.format_exc())
+                self.failed_tracks.append(track)
+                self.update_track_counts_ui("Error")
+
+
+
       
 
 
+
+
       
-
-
 
 
 

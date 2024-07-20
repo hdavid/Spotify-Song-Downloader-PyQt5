@@ -2,6 +2,8 @@
 
 ## Changelog
 
+- v3.0.0 Replace scraping with code from https://github.com/MattJaccino/spotify-downloader
+
 - v2.1.2-hdavid
   - add download cover
   - skip already downloaded tracks
@@ -67,7 +69,7 @@ When running as an app, it will download the files to : `./'playlist name'"`
 
 ## Author
 
-- based on code from [Surenjanath Singh](https://github.com/surenjanath)
+- based on code from [Surenjanath Singh](https://github.com/surenjanath) and from https://github.com/MattJaccino/spotify-downloader
 - see the wonderful [Building an Interface for our Spotify Song Downloader with PyQt5](https://surenjanath.medium.com/building-an-interface-for-our-spotify-song-downloader-with-pyqt5-fa0442909be9)
 
 ## License
